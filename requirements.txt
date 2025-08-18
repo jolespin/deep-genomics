@@ -1,0 +1,14 @@
+biom-format
+pandas
+ipython
+ipykernel
+pyarrow
+anndata
+tqdm
+pyfastx
+scikit-learn
+matplotlib
+loguru
+skclust>=2025.8.5
+numpy<2.0.0
+nbformat
