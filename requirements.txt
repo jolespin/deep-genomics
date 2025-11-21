@@ -1,14 +1,13 @@
-biom-format
+# Data Structures
 pandas
-ipython
-ipykernel
 pyarrow
 anndata
-tqdm
 pyfastx
-scikit-learn
-matplotlib
+# Utility
+tqdm
 loguru
-skclust>=2025.8.5
-numpy<2.0.0
-nbformat
+# Modeling
+scikit-learn
+# numpy<2.0.0
+numpy
+torch

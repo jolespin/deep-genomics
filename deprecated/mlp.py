@@ -39,13 +39,13 @@ from sklearn.metrics import (
     auc,
 )
 
-from .utils import *
+from ..deep_genomics.utils import *
 
 # Model
 class BinaryMLPClassifier(nn.Module):
     def __init__(self, 
                  n_features: int,  
-                 hidden_sizes=[512, 256, 128], 
+                 hidden_dims=[512, 256, 128], 
                  dropout_rates=[0.3, 0.3, 0.2], 
                  activation_fn=nn.ReLU,  
                  seed=0, 
@@ -57,7 +57,7 @@ class BinaryMLPClassifier(nn.Module):
         
         Args:
             n_features: Number of input features
-            hidden_sizes: List of hidden layer sizes
+            hidden_dims: List of hidden layer sizes
             dropout_rates: List of dropout rates for each hidden layer
             activation_fn: Activation function to use (default: ReLU)
             seed: Random seed for weight initialization
@@ -75,7 +75,7 @@ class BinaryMLPClassifier(nn.Module):
         layers = []
         input_size = n_features
         
-        for i, (hidden_size, dropout_rate) in enumerate(zip(hidden_sizes, dropout_rates)):
+        for i, (hidden_size, dropout_rate) in enumerate(zip(hidden_dims, dropout_rates)):
             layers.extend([
                 nn.Linear(input_size, hidden_size),
                 activation_fn(**activation_kwargs),
