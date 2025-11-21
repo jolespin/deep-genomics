@@ -38,22 +38,21 @@ def train_binary_classifier(
         import wandb
 
         # User initializes wandb with basic info
-        run = wandb.init(
+        with wandb.init(
             project="genomics-classifier",
             name="experiment-1",
             tags=["binary", "mlp"]
-        )
+            ) as wandb_run:
 
-        # Training parameters are automatically logged to wandb.config
-        history = train_classifier(
-            model,
-            train_loader,
-            num_epochs=20,
-            learning_rate=1e-3,
-            wandb_run=run
-        )
+            # Training parameters are automatically logged to wandb.config
+            history = train_classifier(
+                model,
+                train_loader,
+                num_epochs=20,
+                learning_rate=1e-3,
+                wandb_run=wandb_run
+            )
 
-        run.finish()
     """
     
     # Log training config to wandb
@@ -205,23 +204,22 @@ def train_binary_vae(
     import wandb
 
     # User initializes wandb with basic info
-    run = wandb.init(
+    with wandb.init(
         project="genomics-vae",
         name="experiment-1",
         tags=["binary", "kegg"]
-    )
+        ) as wandb_run:
 
-    # Training parameters are automatically logged to wandb.config
-    history = train_vae(
-        model, 
-        train_loader, 
-        num_epochs=20,
-        learning_rate=1e-3,
-        beta=1.0,
-        wandb_run=run
-    )
+        # Training parameters are automatically logged to wandb.config
+        history = train_vae(
+            model, 
+            train_loader, 
+            num_epochs=20,
+            learning_rate=1e-3,
+            beta=1.0,
+            wandb_run=wandb_run
+        )
 
-    run.finish()
     """
     
     # Log training config to wandb
