@@ -300,6 +300,15 @@ def train_binary_vae(
         history['loss'].append(avg_loss)
         history['recon_loss'].append(avg_recon)
         history['kl_loss'].append(avg_kl)
+
+        # Log to wandb
+        if wandb_run is not None:
+            wandb_run.log({
+                'epoch': epoch,
+                'loss': avg_loss,
+                'recon_loss': avg_recon,
+                'kl_loss': avg_kl
+            })
         
         # Log progress
         if verbose:
