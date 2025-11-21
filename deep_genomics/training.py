@@ -143,7 +143,6 @@ def train_binary_classifier(
         # Log to wandb
         if wandb_run is not None:
             wandb_run.log({
-                'epoch': epoch,
                 'loss': avg_loss,
                 'accuracy': accuracy
             })
@@ -304,7 +303,6 @@ def train_binary_vae(
         # Log to wandb
         if wandb_run is not None:
             wandb_run.log({
-                'epoch': epoch,
                 'loss': avg_loss,
                 'recon_loss': avg_recon,
                 'kl_loss': avg_kl
