@@ -3,6 +3,7 @@ import json
 from loguru import logger
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
 from torch.distributions import (
     Normal, 
     Bernoulli,
@@ -267,7 +268,7 @@ class BinaryVariationalAutoencoder(nn.Module):
 
         return p_x, q_z, z
     
-    def sample(self, n_samples, device=None):
+    def sample(self, n_samples:int, device=None):
         """
         Generate samples from the prior p(z) = N(0, I)
         """
@@ -285,67 +286,181 @@ class BinaryVariationalAutoencoder(nn.Module):
             
         return samples
     
-    def reconstruct(self, x):
+    # Reconstruct
+    def reconstruct(self, x, device=None, return_cpu=True):
         """
         Reconstruct input using posterior mean (deterministic)
 
         Args:
-            x: Input tensor of shape [n_features] or [batch_size, n_features]
-
+            x: DataLoader, or tensor of shape [n_features] or [batch_size, n_features]
+            device: Device to move tensors to (e.g., 'cpu', 'mps', 'cuda'). If None, uses model's current device
+            return_cpu: Return output on CPU
         Returns:
-            Reconstruction of shape [n_features] or [batch_size, n_features]
+            Reconstruction(s)
         """
-        self.eval()
+        if device is None:
+            device = next(self.parameters()).device
 
-        # Check if single sample (1D) - add batch dimension
-        if x.ndim == 1:
-            x = x.unsqueeze(0)
-            squeeze_output = True
+        if isinstance(x, DataLoader):
+            return self._reconstruct_dataloader(x, device=device, return_cpu=return_cpu)
         else:
-            squeeze_output = False
+            return self._reconstruct_tensor(x, device=device, return_cpu=return_cpu)
 
+    def _reconstruct_dataloader(self, dataloader, device, return_cpu):
+        """Reconstruct via DataLoader (memory efficient)"""
+        self.eval()
+        
+        reconstructions = []
         with torch.no_grad():
-            # Encode: get posterior mean (deterministic latent representation)
-            mu, logvar = self.encode(x)
-            # Decode: get logits
+            for batch in dataloader:
+                x = batch[0] if isinstance(batch, (tuple, list)) else batch
+                x = x.to(device)
+                mu, _ = self.encode(x)
+                logits = self.decode(mu)
+                x_recon = torch.sigmoid(logits)
+                reconstructions.append(x_recon.cpu() if return_cpu else x_recon)
+        
+        return torch.cat(reconstructions, dim=0)
+
+    def _reconstruct_tensor(self, x, device, return_cpu):
+        """Reconstruct single tensor (convenience method)"""
+        self.eval()
+        
+        squeeze_output = x.ndim == 1
+        if squeeze_output:
+            x = x.unsqueeze(0)
+        
+        with torch.no_grad():
+            x = x.to(device)
+            mu, _ = self.encode(x)
             logits = self.decode(mu)
-            # Get reconstruction mean
             x_recon = torch.sigmoid(logits)
         
-        # Remove batch dimension if input was single sample
         if squeeze_output:
             x_recon = x_recon.squeeze(0)
-
-        return x_recon
         
-    def transform(self, x):
+        if return_cpu:
+            x_recon = x_recon.cpu()
+        
+        return x_recon
+    
+    # def reconstruct(self, x):
+    #     """
+    #     Reconstruct input using posterior mean (deterministic)
+
+    #     Args:
+    #         x: Input tensor of shape [n_features] or [batch_size, n_features]
+
+    #     Returns:
+    #         Reconstruction of shape [n_features] or [batch_size, n_features]
+    #     """
+    #     self.eval()
+
+    #     # Check if single sample (1D) - add batch dimension
+    #     if x.ndim == 1:
+    #         x = x.unsqueeze(0)
+    #         squeeze_output = True
+    #     else:
+    #         squeeze_output = False
+
+    #     with torch.no_grad():
+    #         # Encode: get posterior mean (deterministic latent representation)
+    #         mu, logvar = self.encode(x)
+    #         # Decode: get logits
+    #         logits = self.decode(mu)
+    #         # Get reconstruction mean
+    #         x_recon = torch.sigmoid(logits)
+        
+    #     # Remove batch dimension if input was single sample
+    #     if squeeze_output:
+    #         x_recon = x_recon.squeeze(0)
+
+    #     return x_recon
+        
+    # Transform
+    def transform(self, x, device=None, return_cpu=True):
         """
         Transform input to latent representation (deterministic)
         
         Args:
-            x: Input tensor of shape [n_features] or [batch_size, n_features]
+            x: DataLoader, or tensor of shape [n_features] or [batch_size, n_features]
+            device: Device to move tensors to (e.g., 'cpu', 'mps', 'cuda'). If None, uses model's current device
+            return_cpu: Return output on CPU
         
         Returns:
-            Latent representation of shape [latent_dim] or [batch_size, latent_dim]
+            Latent representation(s) of shape [latent_dim] or [batch_size, latent_dim]
         """
+        if device is None:
+            device = next(self.parameters()).device
+        
+        if isinstance(x, DataLoader):
+            return self._transform_dataloader(x, device=device, return_cpu=return_cpu)
+        else:
+            return self._transform_tensor(x, device=device, return_cpu=return_cpu)
+
+    def _transform_dataloader(self, dataloader, device, return_cpu):
+        """Transform via DataLoader (memory efficient)"""
         self.eval()
         
-        # Check if single sample (1D) - add batch dimension
-        if x.ndim == 1:
+        latent_codes = []
+        with torch.no_grad():
+            for batch in dataloader:
+                x = batch[0] if isinstance(batch, (tuple, list)) else batch
+                x = x.to(device)
+                mu, _ = self.encode(x)
+                latent_codes.append(mu.cpu() if return_cpu else mu)
+        
+        return torch.cat(latent_codes, dim=0)
+
+    def _transform_tensor(self, x, device, return_cpu):
+        """Transform single tensor (convenience method)"""
+        self.eval()
+        
+        squeeze_output = x.ndim == 1
+        if squeeze_output:
             x = x.unsqueeze(0)
-            squeeze_output = True
-        else:
-            squeeze_output = False
         
         with torch.no_grad():
+            x = x.to(device)
             mu, _ = self.encode(x)
         
-        # Remove batch dimension if input was single sample
         if squeeze_output:
             mu = mu.squeeze(0)
         
+        if return_cpu:
+            mu = mu.cpu()
+        
         return mu
     
+# def transform(self, x):
+    #     """
+    #     Transform input to latent representation (deterministic)
+        
+    #     Args:
+    #         x: Input tensor of shape [n_features] or [batch_size, n_features]
+        
+    #     Returns:
+    #         Latent representation of shape [latent_dim] or [batch_size, latent_dim]
+    #     """
+    #     self.eval()
+        
+    #     # Check if single sample (1D) - add batch dimension
+    #     if x.ndim == 1:
+    #         x = x.unsqueeze(0)
+    #         squeeze_output = True
+    #     else:
+    #         squeeze_output = False
+        
+    #     with torch.no_grad():
+    #         mu, _ = self.encode(x)
+        
+    #     # Remove batch dimension if input was single sample
+    #     if squeeze_output:
+    #         mu = mu.squeeze(0)
+        
+    #     return mu
+
+    # HuggingFace Support
     def save_pretrained(self, save_directory):
         """Save model weights and config in HuggingFace format"""
         

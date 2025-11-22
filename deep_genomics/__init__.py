@@ -5,4 +5,4 @@ from . import models
 from . import training
 from . import evaluation
 
-__version__ = "2025.11.21"
+__version__ = "2025.11.22"
