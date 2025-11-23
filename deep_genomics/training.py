@@ -2,7 +2,10 @@ from tqdm import tqdm
 from loguru import logger
 import torch
 
-from .losses import binary_vae_loss
+from .losses import (
+    binary_vae_loss,
+    binary_beta_tcvae_loss,
+)
 
 def train_binary_classifier(
     model,
@@ -323,6 +326,133 @@ def train_binary_vae(
             if patience_counter >= early_stopping_patience:
                 if verbose:
                     logger.warning(f"Early stopping triggered after {epoch} epochs (patience: {early_stopping_patience})")
+                break
+    
+    return history
+
+def train_binary_beta_tcvae(
+    model, 
+    train_loader, 
+    num_epochs, 
+    learning_rate=1e-3, 
+    beta=1.0,
+    alpha=1.0,
+    gamma=1.0,
+    device='cpu', 
+    verbose=True,
+    early_stopping_patience=None,
+    early_stopping_min_delta=1e-4,
+    wandb_run=None
+):
+    """Train a BinaryVariationalAutoencoder with β-TCVAE loss."""
+    
+    dataset_size = len(train_loader.dataset)
+    
+    # Log config
+    if wandb_run is not None:
+        wandb_run.config.update({
+            'num_epochs': num_epochs,
+            'learning_rate': learning_rate,
+            'beta': beta,
+            'alpha': alpha,
+            'gamma': gamma,
+            'device': device,
+            'early_stopping_patience': early_stopping_patience,
+            'early_stopping_min_delta': early_stopping_min_delta,
+            'batch_size': train_loader.batch_size,
+            'dataset_size': dataset_size,
+            'input_dim': model.input_dim,
+            'hidden_dims': model.hidden_dims,
+            'latent_dim': model.latent_dim,
+            'activation_fn': model.activation_fn.__name__
+        })
+    
+    model = model.to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    
+    history = {
+        'loss': [],
+        'recon_loss': [],
+        'mi_loss': [],
+        'tc_loss': [],
+        'dw_kl_loss': []
+    }
+    
+    best_loss = float('inf')
+    patience_counter = 0
+    
+    for epoch in range(1, num_epochs + 1):
+        model.train()
+        n_batches = len(train_loader)
+        total_loss = 0
+        total_recon = 0
+        total_mi = 0
+        total_tc = 0
+        total_dw_kl = 0
+        
+        iterator = tqdm(train_loader, desc=f"Epoch {epoch}/{num_epochs}") if verbose else train_loader
+        
+        for batch in iterator:
+            x = batch[0].to(device)
+            
+            optimizer.zero_grad()
+            
+            # Forward pass
+            p_x, q_z, z = model(x)
+            
+            # Compute β-TCVAE loss
+            loss, recon, mi, tc, dw_kl = binary_beta_tcvae_loss(
+                x, p_x, q_z, z, dataset_size, beta, alpha, gamma
+            )
+            
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item()
+            total_recon += recon.item()
+            total_mi += mi.item()
+            total_tc += tc.item()
+            total_dw_kl += dw_kl.item()
+        
+        # Calculate averages
+        avg_loss = total_loss / n_batches
+        avg_recon = total_recon / n_batches
+        avg_mi = total_mi / n_batches
+        avg_tc = total_tc / n_batches
+        avg_dw_kl = total_dw_kl / n_batches
+        
+        history['loss'].append(avg_loss)
+        history['recon_loss'].append(avg_recon)
+        history['mi_loss'].append(avg_mi)
+        history['tc_loss'].append(avg_tc)
+        history['dw_kl_loss'].append(avg_dw_kl)
+        
+        if wandb_run is not None:
+            wandb_run.log({
+                'loss': avg_loss,
+                'recon_loss': avg_recon,
+                'mi_loss': avg_mi,
+                'tc_loss': avg_tc,
+                'dw_kl_loss': avg_dw_kl
+            })
+        
+        if verbose:
+            logger.info(
+                f"Epoch {epoch}/{num_epochs} - Loss: {avg_loss:.4f}, "
+                f"Recon: {avg_recon:.4f}, MI: {avg_mi:.4f}, TC: {avg_tc:.4f}, DW-KL: {avg_dw_kl:.4f}"
+            )
+        
+        # Early stopping
+        if early_stopping_patience is not None:
+            if avg_loss < best_loss - early_stopping_min_delta:
+                best_loss = avg_loss
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                
+            if patience_counter >= early_stopping_patience:
+                if verbose:
+                    logger.warning(f"Early stopping after {epoch} epochs")
                 break
     
     return history

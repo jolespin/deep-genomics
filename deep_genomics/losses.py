@@ -36,3 +36,76 @@ def binary_vae_loss(x, p_x, q_z, beta=1.0):
     total_loss = recon_loss + beta * kl_loss
 
     return total_loss, recon_loss, kl_loss
+
+def binary_beta_tcvae_loss(x, p_x, q_z, z, dataset_size, beta=1.0, alpha=1.0, gamma=1.0):
+    """
+    Compute the β-TCVAE loss for binary data.
+    
+    Loss = Reconstruction + α*Index-Code MI + β*Total Correlation + γ*Dimension-wise KL
+    
+    Based on "Isolating Sources of Disentanglement in Variational Autoencoders"
+    (Chen et al., 2018): https://arxiv.org/abs/1802.04942
+    
+    Args:
+        x: Input data, shape [batch_size, input_dim]
+        p_x: Bernoulli distribution over reconstructions, p(x|z)
+        q_z: Posterior distribution over latents, q(z|x)
+        z: Sampled latent codes, shape [batch_size, latent_dim]
+        dataset_size: Total number of samples in dataset (unused in standard formulation)
+        beta: Weight for total correlation term (default: 1.0)
+        alpha: Weight for index-code MI term (default: 1.0)
+        gamma: Weight for dimension-wise KL term (default: 1.0)
+    
+    Returns:
+        tuple: (total_loss, recon_loss, mi_loss, tc_loss, dw_kl_loss)
+    """
+    batch_size = x.shape[0]
+    latent_dim = z.shape[1]
+    device = z.device
+    
+    # Minibatch weight (standard: use only batch_size)
+    log_batch_size = torch.log(torch.tensor(batch_size, dtype=torch.float32, device=device))
+    
+    # Reconstruction loss: -log p(x|z)
+    recon_loss = -p_x.log_prob(x).sum(dim=1).mean()
+    
+    # Compute log q(z|x) for the batch
+    log_qz_given_x = q_z.log_prob(z).sum(dim=1)  # [batch_size]
+    
+    # Expand for broadcasting
+    z_expand = z.unsqueeze(1)  # [batch_size, 1, latent_dim]
+    mu_expand = q_z.mean.unsqueeze(0)  # [1, batch_size, latent_dim]
+    std_expand = q_z.stddev.unsqueeze(0)  # [1, batch_size, latent_dim]
+    
+    # Compute log q(z_i | x_j) for all pairs, KEEP DIMENSIONS SEPARATE
+    all_log_qz_given_x_per_dim = Normal(mu_expand, std_expand).log_prob(z_expand)  # [batch_size, batch_size, latent_dim]
+    
+    # Minibatch weighted log q(z)
+    log_qz = torch.logsumexp(all_log_qz_given_x_per_dim.sum(dim=2), dim=1) - log_batch_size  # [batch_size]
+    
+    # Compute log q(z) product of marginals: log prod_d q(z_d)
+    # For each dimension, estimate log q(z_d), then sum over dimensions
+    log_qz_product = (
+        torch.logsumexp(all_log_qz_given_x_per_dim, dim=1) - log_batch_size
+    ).sum(dim=1)  # [batch_size]
+    
+    # Compute log p(z) = log N(0, I)
+    log_pz = Normal(
+        torch.zeros(latent_dim, device=device), 
+        torch.ones(latent_dim, device=device)
+    ).log_prob(z).sum(dim=1)  # [batch_size]
+    
+    # Decompose KL into three terms:
+    # Index-code mutual information: I(z;x) = E[log q(z|x) - log q(z)]
+    mi_loss = (log_qz_given_x - log_qz).mean()
+    
+    # Total correlation: TC(z) = E[log q(z) - log prod_d q(z_d)]
+    tc_loss = (log_qz - log_qz_product).mean()
+    
+    # Dimension-wise KL: sum_d KL(q(z_d)||p(z_d)) = E[log prod_d q(z_d) - log p(z)]
+    dw_kl_loss = (log_qz_product - log_pz).mean()
+    
+    # Total loss
+    total_loss = recon_loss + alpha * mi_loss + beta * tc_loss + gamma * dw_kl_loss
+    
+    return total_loss, recon_loss, mi_loss, tc_loss, dw_kl_loss

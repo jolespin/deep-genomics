@@ -287,62 +287,56 @@ class BinaryVariationalAutoencoder(nn.Module):
         return samples
     
     # Reconstruct
-    def reconstruct(self, x, device=None, return_cpu=True):
+    def reconstruct(self, x, batch_size=2048, device=None, return_cpu=True):
         """
         Reconstruct input using posterior mean (deterministic)
 
         Args:
-            x: DataLoader, or tensor of shape [n_features] or [batch_size, n_features]
+            x: Tensor or array of shape [n_samples, n_features] or [n_features]
+            batch_size: Process in batches of this size for memory efficiency
             device: Device to move tensors to (e.g., 'cpu', 'mps', 'cuda'). If None, uses model's current device
             return_cpu: Return output on CPU
+        
         Returns:
-            Reconstruction(s)
+            Reconstruction(s) of shape [n_samples, n_features] or [n_features]
         """
-        if device is None:
-            device = next(self.parameters()).device
-
-        if isinstance(x, DataLoader):
-            return self._reconstruct_dataloader(x, device=device, return_cpu=return_cpu)
-        else:
-            return self._reconstruct_tensor(x, device=device, return_cpu=return_cpu)
-
-    def _reconstruct_dataloader(self, dataloader, device, return_cpu):
-        """Reconstruct via DataLoader (memory efficient)"""
         self.eval()
         
+        if device is None:
+            device = next(self.parameters()).device
+        
+        # Handle single sample
+        squeeze_output = False
+        if isinstance(x, torch.Tensor) and x.ndim == 1:
+            x = x.unsqueeze(0)
+            squeeze_output = True
+        elif isinstance(x, np.ndarray) and x.ndim == 1:
+            x = x.reshape(1, -1)
+            squeeze_output = True
+        
+        # Convert to tensor if needed
+        if not isinstance(x, torch.Tensor):
+            x = torch.from_numpy(x).float()
+        
+        n_samples = x.shape[0]
         reconstructions = []
+        
         with torch.no_grad():
-            for batch in dataloader:
-                x = batch[0] if isinstance(batch, (tuple, list)) else batch
-                x = x.to(device)
-                mu, _ = self.encode(x)
+            # Process in batches for memory efficiency
+            for i in range(0, n_samples, batch_size):
+                batch = x[i:i+batch_size].to(device)
+                mu, _ = self.encode(batch)
                 logits = self.decode(mu)
                 x_recon = torch.sigmoid(logits)
                 reconstructions.append(x_recon.cpu() if return_cpu else x_recon)
         
-        return torch.cat(reconstructions, dim=0)
-
-    def _reconstruct_tensor(self, x, device, return_cpu):
-        """Reconstruct single tensor (convenience method)"""
-        self.eval()
+        result = torch.cat(reconstructions, dim=0)
         
-        squeeze_output = x.ndim == 1
+        # Remove batch dimension if input was single sample
         if squeeze_output:
-            x = x.unsqueeze(0)
+            result = result.squeeze(0)
         
-        with torch.no_grad():
-            x = x.to(device)
-            mu, _ = self.encode(x)
-            logits = self.decode(mu)
-            x_recon = torch.sigmoid(logits)
-        
-        if squeeze_output:
-            x_recon = x_recon.squeeze(0)
-        
-        if return_cpu:
-            x_recon = x_recon.cpu()
-        
-        return x_recon
+        return result
     
     # def reconstruct(self, x):
     #     """
@@ -378,59 +372,39 @@ class BinaryVariationalAutoencoder(nn.Module):
     #     return x_recon
         
     # Transform
-    def transform(self, x, device=None, return_cpu=True):
+    def transform(self, x, batch_size=2048, device=None, return_cpu=True):
         """
         Transform input to latent representation (deterministic)
         
         Args:
-            x: DataLoader, or tensor of shape [n_features] or [batch_size, n_features]
+            x: Tensor or array of shape [n_samples, n_features]
+            batch_size: Process in batches of this size for memory efficiency
             device: Device to move tensors to (e.g., 'cpu', 'mps', 'cuda'). If None, uses model's current device
             return_cpu: Return output on CPU
         
         Returns:
-            Latent representation(s) of shape [latent_dim] or [batch_size, latent_dim]
+            Latent representations of shape [n_samples, latent_dim]
         """
+        self.eval()
+        
         if device is None:
             device = next(self.parameters()).device
         
-        if isinstance(x, DataLoader):
-            return self._transform_dataloader(x, device=device, return_cpu=return_cpu)
-        else:
-            return self._transform_tensor(x, device=device, return_cpu=return_cpu)
-
-    def _transform_dataloader(self, dataloader, device, return_cpu):
-        """Transform via DataLoader (memory efficient)"""
-        self.eval()
+        # Convert to tensor if needed
+        if not isinstance(x, torch.Tensor):
+            x = torch.from_numpy(x).float()
         
+        n_samples = x.shape[0]
         latent_codes = []
+        
         with torch.no_grad():
-            for batch in dataloader:
-                x = batch[0] if isinstance(batch, (tuple, list)) else batch
-                x = x.to(device)
-                mu, _ = self.encode(x)
+            # Process in batches for memory efficiency
+            for i in range(0, n_samples, batch_size):
+                batch = x[i:i+batch_size].to(device)
+                mu, _ = self.encode(batch)
                 latent_codes.append(mu.cpu() if return_cpu else mu)
         
         return torch.cat(latent_codes, dim=0)
-
-    def _transform_tensor(self, x, device, return_cpu):
-        """Transform single tensor (convenience method)"""
-        self.eval()
-        
-        squeeze_output = x.ndim == 1
-        if squeeze_output:
-            x = x.unsqueeze(0)
-        
-        with torch.no_grad():
-            x = x.to(device)
-            mu, _ = self.encode(x)
-        
-        if squeeze_output:
-            mu = mu.squeeze(0)
-        
-        if return_cpu:
-            mu = mu.cpu()
-        
-        return mu
     
 # def transform(self, x):
     #     """
