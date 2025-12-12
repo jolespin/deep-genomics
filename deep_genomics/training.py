@@ -3,7 +3,7 @@ from loguru import logger
 import torch
 
 from .losses import (
-    binary_vae_loss,
+    binary_beta_vae_loss,
     binary_beta_tcvae_loss,
 )
 

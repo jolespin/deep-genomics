@@ -4,18 +4,19 @@ from torch.distributions import (
     kl_divergence,
 )
 
-def binary_vae_loss(x, p_x, q_z, beta=1.0):
+def beta_vae_loss(x, p_x, q_z, beta=1.0):
     """
-    Compute the VAE loss for binary data (ELBO with Bernoulli likelihood).
+    Compute the β-VAE loss (ELBO with KL annealing).
     
     Loss = Reconstruction Loss + β * KL Divergence
     
     Args:
         x: Input data, shape [batch_size, input_dim]
-        p_x: Bernoulli distribution over reconstructions, p(x|z)
+        p_x: Reconstruction distribution p(x|z), e.g., Bernoulli for binary data,
+             Normal for continuous data, or any PyTorch distribution with log_prob method
         q_z: Posterior distribution over latents, q(z|x)
         beta: Weight for KL divergence term (default=1.0). 
-              Use beta < 1.0 to prevent posterior collapse.
+              Use beta < 1.0 to prevent posterior collapse, beta > 1.0 for stronger disentanglement.
     
     Returns:
         tuple: (total_loss, recon_loss, kl_loss)
@@ -37,9 +38,9 @@ def binary_vae_loss(x, p_x, q_z, beta=1.0):
 
     return total_loss, recon_loss, kl_loss
 
-def binary_beta_tcvae_loss(x, p_x, q_z, z, dataset_size, beta=1.0, alpha=1.0, gamma=1.0):
+def beta_tcvae_loss(x, p_x, q_z, z, beta=1.0, alpha=1.0, gamma=1.0):
     """
-    Compute the β-TCVAE loss for binary data.
+    Compute the β-TCVAE loss.
     
     Loss = Reconstruction + α*Index-Code MI + β*Total Correlation + γ*Dimension-wise KL
     
@@ -48,10 +49,10 @@ def binary_beta_tcvae_loss(x, p_x, q_z, z, dataset_size, beta=1.0, alpha=1.0, ga
     
     Args:
         x: Input data, shape [batch_size, input_dim]
-        p_x: Bernoulli distribution over reconstructions, p(x|z)
+        p_x: Reconstruction distribution p(x|z), e.g., Bernoulli for binary data,
+             Normal for continuous data, or any PyTorch distribution with log_prob method
         q_z: Posterior distribution over latents, q(z|x)
         z: Sampled latent codes, shape [batch_size, latent_dim]
-        dataset_size: Total number of samples in dataset (unused in standard formulation)
         beta: Weight for total correlation term (default: 1.0)
         alpha: Weight for index-code MI term (default: 1.0)
         gamma: Weight for dimension-wise KL term (default: 1.0)
@@ -63,7 +64,7 @@ def binary_beta_tcvae_loss(x, p_x, q_z, z, dataset_size, beta=1.0, alpha=1.0, ga
     latent_dim = z.shape[1]
     device = z.device
     
-    # Minibatch weight (standard: use only batch_size)
+    # Minibatch weight for q(z) estimation
     log_batch_size = torch.log(torch.tensor(batch_size, dtype=torch.float32, device=device))
     
     # Reconstruction loss: -log p(x|z)
@@ -72,19 +73,21 @@ def binary_beta_tcvae_loss(x, p_x, q_z, z, dataset_size, beta=1.0, alpha=1.0, ga
     # Compute log q(z|x) for the batch
     log_qz_given_x = q_z.log_prob(z).sum(dim=1)  # [batch_size]
     
-    # Expand for broadcasting
+    # Expand for broadcasting to compute all pairs
     z_expand = z.unsqueeze(1)  # [batch_size, 1, latent_dim]
     mu_expand = q_z.mean.unsqueeze(0)  # [1, batch_size, latent_dim]
     std_expand = q_z.stddev.unsqueeze(0)  # [1, batch_size, latent_dim]
     
-    # Compute log q(z_i | x_j) for all pairs, KEEP DIMENSIONS SEPARATE
-    all_log_qz_given_x_per_dim = Normal(mu_expand, std_expand).log_prob(z_expand)  # [batch_size, batch_size, latent_dim]
+    # Compute log q(z_i[d] | x_j) for all pairs (i,j) and dimensions d
+    # Shape: [batch_size_i, batch_size_j, latent_dim]
+    # Entry [i,j,d] represents log q(z_i[d] | x_j), keeping dimensions separate
+    all_log_qz_given_x_per_dim = Normal(mu_expand, std_expand).log_prob(z_expand)
     
-    # Minibatch weighted log q(z)
+    # Minibatch weighted log q(z): estimate using all pairs, then average over j
     log_qz = torch.logsumexp(all_log_qz_given_x_per_dim.sum(dim=2), dim=1) - log_batch_size  # [batch_size]
     
     # Compute log q(z) product of marginals: log prod_d q(z_d)
-    # For each dimension, estimate log q(z_d), then sum over dimensions
+    # For each dimension d, estimate log q(z_d) independently, then sum over d
     log_qz_product = (
         torch.logsumexp(all_log_qz_given_x_per_dim, dim=1) - log_batch_size
     ).sum(dim=1)  # [batch_size]
