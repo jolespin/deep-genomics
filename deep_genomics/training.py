@@ -3,8 +3,8 @@ from loguru import logger
 import torch
 
 from .losses import (
-    binary_beta_vae_loss,
-    binary_beta_tcvae_loss,
+    beta_vae_loss,
+    beta_tcvae_loss,
 )
 
 def train_binary_classifier(
