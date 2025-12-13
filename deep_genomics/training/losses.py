@@ -36,7 +36,11 @@ def beta_vae_loss(x, p_x, q_z, beta=1.0):
     # Total loss (negative ELBO)
     total_loss = recon_loss + beta * kl_loss
 
-    return total_loss, recon_loss, kl_loss
+    return {
+        "total_loss":total_loss, 
+        "recon_loss":recon_loss, 
+        "kl_loss":kl_loss,
+        }
 
 def beta_tcvae_loss(x, p_x, q_z, z, beta=1.0, alpha=1.0, gamma=1.0):
     """
@@ -111,4 +115,10 @@ def beta_tcvae_loss(x, p_x, q_z, z, beta=1.0, alpha=1.0, gamma=1.0):
     # Total loss
     total_loss = recon_loss + alpha * mi_loss + beta * tc_loss + gamma * dw_kl_loss
     
-    return total_loss, recon_loss, mi_loss, tc_loss, dw_kl_loss
+    return {
+        "total_loss":total_loss, 
+        "recon_loss":recon_loss, 
+        "mi_loss":mi_loss, 
+        "tc_loss":tc_loss, 
+        "dw_kl_loss":dw_kl_loss,
+    }

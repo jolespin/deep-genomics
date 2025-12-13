@@ -2,7 +2,6 @@
 import os
 import random
 import numpy as np
-from tqdm import tqdm
 from loguru import logger
 import torch
 import torch.nn as nn

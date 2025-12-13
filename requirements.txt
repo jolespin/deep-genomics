@@ -12,4 +12,5 @@ scikit-learn
 numpy
 torch
 lightning
+huggingface-hub>=0.34.0,<1.0
 # torchdr

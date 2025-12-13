@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 import os
 
 script_directory = os.path.abspath(os.path.dirname(__file__))
@@ -27,7 +27,7 @@ setup(name='deep_genomics',
     author='Josh L. Espinoza',
     author_email='jol.espinoz@gmail.com',
     license='MIT',
-    packages=["deep_genomics"],
+    packages=find_packages(),
     install_requires=requirements,
     include_package_data=False,
     scripts=[

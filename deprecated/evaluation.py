@@ -9,7 +9,7 @@ from sklearn.metrics import (
     f1_score,
 )
 
-from .losses import binary_vae_loss
+from .losses import beta_vae_loss
 
 def evaluate_binary_vae(model, test_loader, beta=1.0, device='cpu'):
     """
@@ -31,7 +31,7 @@ def evaluate_binary_vae(model, test_loader, beta=1.0, device='cpu'):
         for batch in test_loader:
             x = batch[0].to(device)
             p_x, q_z, z = model(x)
-            loss, recon, kl = binary_vae_loss(x, p_x, q_z, beta)
+            loss, recon, kl = beta_vae_loss(x, p_x, q_z, beta)
             
             total_loss += loss.item()
             total_recon += recon.item()
