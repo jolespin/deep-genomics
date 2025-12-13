@@ -559,16 +559,16 @@ class BinaryBetaTCVAE(BaseVAE):
         confusion_matrix = binary_confusion_matrix(x_recon, x, threshold=0.5)
 
         # Log metrics
-        self.log("train_loss", losses["total_loss"], on_step=False, on_epoch=True, prog_bar=True)
-        self.log("train_recon_loss", losses["recon_loss"], on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_loss", losses["total_loss"], on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_recon_loss", losses["recon_loss"], on_step=False, on_epoch=True, prog_bar=True)
         self.log("mi_loss", losses["mi_loss"], on_step=False, on_epoch=True, prog_bar=True)
         self.log("tc_loss", losses["tc_loss"], on_step=False, on_epoch=True, prog_bar=True)
         self.log("dw_kl_loss", losses["dw_kl_loss"], on_step=False, on_epoch=True, prog_bar=True)
 
         # Log reconstruction metrics
-        self.log('train_precision', confusion_matrix['precision'], on_step=False, on_epoch=True, prog_bar=True)
-        self.log('train_recall', confusion_matrix['recall'], on_step=False, on_epoch=True, prog_bar=True)
-        self.log('train_f1', confusion_matrix['f1'], on_step=False, on_epoch=True)
+        self.log('val_precision', confusion_matrix['precision'], on_step=False, on_epoch=True, prog_bar=True)
+        self.log('val_recall', confusion_matrix['recall'], on_step=False, on_epoch=True, prog_bar=True)
+        self.log('val_f1', confusion_matrix['f1'], on_step=False, on_epoch=True)
         
         # Return total loss for backpropagation
         return losses["total_loss"]
